@@ -1,0 +1,6 @@
+requests
+selenium
+fastapi
+uvicorn 
+aiofiles
+pymongo

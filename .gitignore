@@ -1,0 +1,7 @@
+venv/
+.config/
+data/img/
+data/video/
+__pycache__/
+crawl.log
+test1.ipynb
