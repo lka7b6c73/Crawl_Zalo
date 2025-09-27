@@ -42,7 +42,7 @@ def create_profile():
     options.add_argument("--disable-gpu")
     options.add_argument("--disable-notifications")
     options.add_argument("--disable-dev-shm-usage")
-    options.add_argument(f"user-data-dir=E:/Zalo_crawls/.config/profile/{max_id}") 
+    options.add_argument(f"--user-data-dir=E:/Zalo_crawls/.config/profile/{max_id}") 
     driver = webdriver.Chrome(options=options)
     driver.get(urlzalo)
     logging.info(f"Bat dau tao tai khoan zalo moi voi id {max_id}")

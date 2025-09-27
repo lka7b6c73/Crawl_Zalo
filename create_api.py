@@ -24,19 +24,21 @@ def download_file(filename: str):
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(path=file_path, filename=filename, media_type='application/octet-stream')
 
-@app.get("/create_profile")
+@app.post("/create_profile")
 def create_profile_endpoint():
     return create_profile()
 
-@app.get("/login")
-def login_user(name: str):
+
+@app.post("/login")
+def login_user(name: str = Body(..., embed=True)):
     x = find_next_position(used_x)
-    driver = login(name,x)
+    driver = login(name, x)
     drivers[name] = driver
     return {"message": f"Đã login user {name}"}
 
-@app.get("/crawl")
-def crawl_zalo(name: str):
+
+@app.post("/crawl")
+def crawl_zalo(name: str = Body(..., embed=True)):
     if name in threads and threads[name].is_alive():
         return {"message": "Bot đang chạy rồi!"}
     profile = profiles_collection.find_one({'id': int(name)})
@@ -50,15 +52,16 @@ def crawl_zalo(name: str):
     stop_flags[name] = stop_event
 
     # Tạo thread chạy bot
-    t = threading.Thread(target=crawl.run_bot, args=(driver, stop_event,profile['id'],profile['name']))
+    t = threading.Thread(target=crawl.run_bot, args=(driver, stop_event, profile['id'], profile['name']))
     t.start()
     threads[name] = t
     
     logging.info(f"Bot cho tai khoan {name} da bat dau chay")
     return {"message": f"Bot cho tài khoản {name} đã bắt đầu chạy"}
 
-@app.get("/stop_crawl")
-def stop_crawl(name: str):
+
+@app.post("/stop_crawl")
+def stop_crawl(name: str = Body(..., embed=True)):
     stop_event = stop_flags.get(name)
     if not stop_event:
         return {"error": "Không có bot nào đang chạy"}
@@ -68,8 +71,9 @@ def stop_crawl(name: str):
     threads.pop(name, None)
     return {"message": f"Bot của {name} đã được yêu cầu dừng"}
 
-@app.get("/stop_bot")
-def stop_bot(name: str):
+
+@app.post("/stop_bot")
+def stop_bot(name: str = Body(..., embed=True)):
     driver = drivers.get(name)
     if not driver:
         return {"error": "Tài khoản chưa login hoặc bot không tồn tại"}
