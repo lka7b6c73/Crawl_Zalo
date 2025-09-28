@@ -16,7 +16,14 @@ app = FastAPI()
 app.mount("/data", StaticFiles(directory="data"), name="data")
 app.mount("/data/img", StaticFiles(directory="data/img"), name="img")
 app.mount("/data/video", StaticFiles(directory="data/video"), name="video")
-
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Hoặc thay bằng danh sách domain cụ thể như ["https://your-frontend.com"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 used_x =[]
 @app.get("/data/file/{filename}")
 def download_file(filename: str):
