@@ -47,7 +47,7 @@ def login_user(data: NameRequest):
     drivers[name] = driver
     return {"message": f"Đã login user {name}"}
 
-@app.post("/crawl")
+@app.post("/crawls")
 def crawl_zalo(data: NameRequest):
     name = data.name
     if name in threads and threads[name].is_alive():
@@ -124,3 +124,76 @@ def get_all_profiles():
 def get_all_data():
     data = list(data_collection.find({}, {"_id": 0}))
     return JSONResponse(content=data)
+
+
+
+
+from fastapi import Query
+import re
+@app.get("/crawl_group")
+def crawl_group_endpoint(id: str = Query(...), group: str = Query(...)):
+    # Kiểm tra driver tương ứng idbot đang có
+    driver = drivers.get(id)
+    if not driver:
+        raise HTTPException(status_code=400, detail="Tài khoản bot chưa login hoặc không tồn tại")
+
+    # Khởi động crawl_group trong thread để không block request (nếu bạn muốn đồng bộ thì bỏ threading)
+    stop_event = threading.Event()
+    profile = profiles_collection.find_one({'id': int(id)})
+    def crawl_and_store():
+        try:
+            # Gọi hàm crawl mất thời gian tùy bạn định nghĩa
+            crawl.crawl_group(driver, group,id, profile['name'])
+        except Exception as e:
+            logging.error(f"Lỗi crawl group {group}: {e}")
+
+    t = threading.Thread(target=crawl_and_store)
+    t.start()
+
+    # Đợi crawl hoàn thành hoặc trả lời trước nếu muốn
+    t.join()  # Nếu muốn chờ crawl xong mới trả về dữ liệu
+    # Hoặc bỏ nếu muốn trả về ngay
+    grid = group
+    group = group_collection.find_one({"id": grid}, {
+        "_id": 0,
+        "id": 1,
+        "name": 1,
+        "url": 1,
+        "len_gr": 1,
+        "last_crawl": 1
+    })
+    if not group:
+        raise HTTPException(status_code=404, detail="Đã yêu cầu tham gia hoặc chưa được xác nhận")
+
+    # Lấy dữ liệu tin nhắn
+    messages_cursor = data_collection.find({"group_id": grid}, {
+        "_id": 0,
+        "id": 1,
+        "type": 1,
+        "content": 1,
+        "time": 1,
+        "user_id": 1,
+        "user_name": 1,
+        "url":1
+    })
+
+    messages = []
+    for mes in messages_cursor:
+        messages.append({
+            "id_mes": mes.get("id", None),
+            "type": mes.get("type", None),
+            "content": mes.get("content", None),
+            "time": mes.get("time", None),
+            "id_user": mes.get("user_id", None),
+            "name_user": mes.get("user_name", None),
+            "url": mes.get("url", None),
+        })
+
+    return JSONResponse(content={
+        "id_group": group.get("id", None),
+        "name_group": group.get("name", None),
+        "len_group": group.get("len_gr", None),
+        "url_group": group.get("url", None),
+        "last_crawl": group.get("last_crawl", None),
+        "data": messages,
+    })

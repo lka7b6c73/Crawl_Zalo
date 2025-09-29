@@ -373,7 +373,7 @@ def update_information(new_info):
             information_collection.insert_one(new_entry)
 
 
-def update_group(max_time, id_group, name_gr, first_user_id,first_user_name):
+def update_group(max_time, id_group, name_gr,len_gr, first_user_id,first_user_name):
     # Kiểm tra xem nhóm đã tồn tại trong cơ sở dữ liệu chưa
     found = group_collection.find_one({"id": id_group})
 
@@ -390,6 +390,9 @@ def update_group(max_time, id_group, name_gr, first_user_id,first_user_name):
             {"id": id_group},
             {"$set": {
                 "name": name_gr,
+                "url": f"https://zalo.me/g/{id_group}",
+                "len_gr": len_gr,
+                "last_crawl": convert_timestamp(max_time),
                 "max_time": max_time,
                 "first_user_id": first_user_id,
                 "first_user_name": first_user_name
@@ -400,13 +403,16 @@ def update_group(max_time, id_group, name_gr, first_user_id,first_user_name):
         group_collection.insert_one({
             "id": id_group,
             "name": name_gr,
+            "url": f"https://zalo.me/g/{id_group}",
+            "len_gr": len_gr,
+            "last_crawl": convert_timestamp(max_time),
             "max_time": max_time,
             "first_user_id": first_user_id,
             "first_user_name": first_user_name,
             "history": []  # Mới tạo nên không có history
         })
-
     return "Group updated successfully."
+
 def count_by_type(data):
     type_counts = {}
     for item in data:
@@ -422,6 +428,9 @@ def get_id_group(driver):
             driver.execute_script("arguments[0].click();", avatar)
             time.sleep(0.5)
             name_gr = driver.find_element(By.XPATH,"//div[@class='flx rel flx-al-c']/div").get_attribute("title")
+            import re
+            len_gr_text = driver.find_element(By.XPATH,"//span[@data-translate-inner='STR_MEMBERS_N']").text
+            len_gr = re.search(r'\((\d+)\)', len_gr_text).group(1)
             bb_mes = driver.find_element(By.XPATH,"//div[@class='stack-page']/div/div")
             driver.execute_script("arguments[0].scrollTop = arguments[0].scrollTop + 100;", bb_mes)
             time.sleep(0.5)
@@ -430,7 +439,7 @@ def get_id_group(driver):
             time.sleep(0.5)
             aa = driver.find_element(By.XPATH,"//i[@class='fa fa-close f16 pre']")
             driver.execute_script("arguments[0].click();", aa)
-            return group_id,name_gr
+            return group_id,name_gr,len_gr
         except: 
             aa = driver.find_element(By.XPATH,"//i[@class='fa fa-close f16 pre']")
             driver.execute_script("arguments[0].click();", aa)
@@ -448,7 +457,7 @@ def run_bot(driver,stop_event,profile_id,profile_name):
             if mes_gr:
                 driver.execute_script("arguments[0].click();", mes_gr)
                 time.sleep(1)
-                id_group,name_gr = get_id_group(driver)
+                id_group,name_gr,len_gr = get_id_group(driver)
                 group = list(group_collection.find({}, {'_id': 0}))
                 #đoạn này là lấy max_time ra để chạy
                 # max_time là thời gian của tin nhắn cuối cùng crawl được từ nhóm 
@@ -476,8 +485,12 @@ def run_bot(driver,stop_event,profile_id,profile_name):
                     first_time = int(list_bb_mes[0].get_attribute("id").split("_")[3])
                     time.sleep(0.5)
                     try:
-                        overscroll = driver.find_element(By.XPATH,"//div[@class='flx-centralized']")
-                        # print('here')
+                        try:
+                            overscroll = driver.find_element(By.XPATH,"//div[@class='flx-centralized']")
+                            print('here')
+                        except:
+                            overscroll = driver.find_element(By.XPATH,"//div[@class='message-view__guide']")
+                            print('here')
                         break 
                     except:
                         pass
@@ -498,7 +511,7 @@ def run_bot(driver,stop_event,profile_id,profile_name):
                         item['url'] = f"/data/video/{item.get('group_id')}/{item.get('user_id')}/{item.get('content')}"
                     elif 'file' in t:
                         item['url'] = f"/data/file/{item.get('content')}"
-                update_group(new_max_time,id_group,name_gr,first_user_id,first_user_name) # đoạn này là cập nhật nhóm
+                update_group(new_max_time,id_group,name_gr,len_gr,first_user_id,first_user_name) # đoạn này là cập nhật nhóm
                 update_information(new_info)
                 # đoạn này là nhảy ra cloud để tiến hành cập nhật lại data để tránh có tin nhắn mới vào làm ảnh hưởng
                 all = driver.find_element(By.XPATH,"//div-b14[@data-translate-inner='STR_ALL']")
@@ -514,10 +527,130 @@ def run_bot(driver,stop_event,profile_id,profile_name):
                 reload(driver)
     except Exception as e:
         print("Lỗi ngoài dự kiến trong bot:", e)
-    finally:
+    # finally:
+    #     try:
+    #         if driver:
+    #             driver.quit()
+    #     except Exception as e:
+    #         print("Lỗi khi đóng driver:", e)
+    #     print("Bot đã dừng và driver đã được đóng.")
+
+def crawl_group(driver, group_code,profile_id,profile_name):
+    new_url = f"https://chat.zalo.me/?g={group_code}"
+    driver.get(new_url)
+    time.sleep(8)
+    try:
+        join_btn = driver.find_element(By.XPATH,"//div[@data-translate-inner='STR_JOIN_GROUP_LOBBY']")
+        driver.execute_script("arguments[0].click();", join_btn)
+        time.sleep(2)
+        print("Đã tham gia nhóm thành công!")
+    except Exception as e:
+        print("Lỗi khi tham gia nhóm hoặc đã tham gia trước đó:", e)
+    id_group,name_gr,len_gr = get_id_group(driver)
+    group = list(group_collection.find({}, {'_id': 0}))
+    #đoạn này là lấy max_time ra để chạy
+    # max_time là thời gian của tin nhắn cuối cùng crawl được từ nhóm 
+    max_time = next((item['max_time'] for item in group if item['id'] == id_group), None) # có gr avaf id rồ
+    first_user_id = next((item['first_user_id'] for item in group if item['id'] == id_group), None) # có gr avaf id rồi
+    first_user_name = next((item['first_user_name'] for item in group if item['id'] == id_group), None) # có gr avaf id rồi
+    if max_time:
+        max_time = int(max_time) 
+    else:
+        max_time = 0 # chưa cso gr 
+
+    list_bb_mes = driver.find_elements(By.XPATH,"//div[@data-component='bubble-message']")
+    # print(list_bb_mes[0].get_attribute("id").split("_"))
+    try:
+        first_time = int(list_bb_mes[0].get_attribute("id").split("_")[3])
+    except:
+        first_time = 0
+    attempt =0
+    while first_time > max_time and attempt < 1000:
+        attempt += 1
+        # print(first_time , max_time)
+        scroll(driver)
+        time.sleep(0.5)
+        list_bb_mes = driver.find_elements(By.XPATH,"//div[@data-component='bubble-message']")
+        first_time = int(list_bb_mes[0].get_attribute("id").split("_")[3])
+        time.sleep(0.5)
         try:
-            if driver:
-                driver.quit()
-        except Exception as e:
-            print("Lỗi khi đóng driver:", e)
-        print("Bot đã dừng và driver đã được đóng.")
+            try:
+                overscroll = driver.find_element(By.XPATH,"//div[@class='flx-centralized']")
+                print('here')
+            except:
+                overscroll = driver.find_element(By.XPATH,"//div[@class='message-view__guide']")
+                print('here')
+            break 
+        except:
+            pass
+    new_max_time = int(list_bb_mes[-1].get_attribute("id").split("_")[3]) # đoạn này lấy thời gian của tin nhắn cuối cùng
+    # print("new_max_time",new_max_time,'max_time',max_time)
+    #######
+    new_data, new_info= update_data(driver,list_bb_mes,id_group,name_gr,max_time,first_user_id,first_user_name) # đoạn này craww
+    ########
+    first_user_id = next((item['user_id'] for item in new_data if 'user_id' in item), None) # đây là id cuôi cùng của người dùng trong nhóm
+    first_user_name = next((item['user_name'] for item in new_data if 'user_id' in item), None) # đây là name cuôi cùng của người dùng trong nhóm
+    for item in new_data:
+        item['profile_id'] = profile_id  # thay bằng giá trị cụ thể
+        item['profile_name'] = profile_name  # thay bằng giá trị cụ thể
+        t = item.get('type', '').lower()
+        if 'photo' in t:
+            item['url'] = f"/data/img/{item.get('group_id')}/{item.get('user_id')}/{item.get('content')}"
+        elif 'video' in t:
+            item['url'] = f"/data/video/{item.get('group_id')}/{item.get('user_id')}/{item.get('content')}"
+        elif 'file' in t:
+            item['url'] = f"/data/file/{item.get('content')}"
+    update_group(new_max_time,id_group,name_gr,len_gr,first_user_id,first_user_name) # đoạn này là cập nhật nhóm
+    update_information(new_info)
+    # đoạn này là nhảy ra cloud để tiến hành cập nhật lại data để tránh có tin nhắn mới vào làm ảnh hưởng
+    all = driver.find_element(By.XPATH,"//div-b14[@data-translate-inner='STR_ALL']")
+    driver.execute_script("arguments[0].click();", all)
+    pinner = driver.find_element(By.XPATH,"//div-16")
+    driver.execute_script("arguments[0].click();", pinner)
+
+    if new_data:
+        data_collection.insert_many(new_data)
+    logging.info(f"Bot: da thu thap duoc {count_by_type(new_data)} va {len(new_info)} user moi trong group {name_gr}") 
+
+def out_gr(driver, gr_url):
+    group_code = gr_url.split("/")[-1]
+    new_url = f"https://chat.zalo.me/?g={group_code}"
+    driver.get(new_url)
+    time.sleep(5)
+    while True:
+        try:
+            avatar = driver.find_element(By.XPATH,"//div[@class='rel zavatar-container']")
+            driver.execute_script("arguments[0].click();", avatar)
+            time.sleep(0.5)
+            try:   
+                out_gr_btn = driver.find_element(By.XPATH,"//span[@data-translate-inner='STR_COMMUNITY_LEAVEGROUP_MENU']")
+                driver.execute_script("arguments[0].click();", out_gr_btn)
+                time.sleep(0.5)
+                out_gr_2 = driver.find_element(By.XPATH,"//div[@data-translate-inner='STR_COMMUNITY_LEAVEGROUP_MENU']")
+                driver.execute_script("arguments[0].click();", out_gr_2)
+                time.sleep(0.5)
+            except:
+                out_gr_btn = driver.find_element(By.XPATH,"//span[@data-translate-inner='STR_LEAVEGROUP_MENU']")
+                driver.execute_script("arguments[0].click();", out_gr_btn)
+                time.sleep(0.5)
+                out_gr_2 = driver.find_element(By.XPATH,"//div[@data-translate-inner='STR_LEAVEGROUP_MENU']")
+                driver.execute_script("arguments[0].click();", out_gr_2)
+                time.sleep(0.5)
+            break
+        except: 
+            aa = driver.find_element(By.XPATH,"//i[@class='fa fa-close f16 pre']")
+            driver.execute_script("arguments[0].click();", aa)
+
+def join_group(driver, gr_url):
+    group_code = gr_url.split("/")[-1]
+    new_url = f"https://chat.zalo.me/?g={group_code}"
+    driver.get(new_url)
+    time.sleep(5)
+    try:
+        join_btn = driver.find_element(By.XPATH,"//div[@data-translate-inner='STR_JOIN_GROUP_LOBBY']")
+        driver.execute_script("arguments[0].click();", join_btn)
+        time.sleep(2)
+        print("Đã tham gia nhóm thành công!")
+    except Exception as e:
+        print("Lỗi khi tham gia nhóm hoặc đã tham gia trước đó:", e)
+
