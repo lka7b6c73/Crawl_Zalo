@@ -9,6 +9,7 @@ import logging
 from services.config import *
 from services.set import *
 import os
+import time
 drivers={}
 threads = {}
 stop_flags = {}
@@ -130,70 +131,98 @@ def get_all_data():
 
 from fastapi import Query
 import re
-@app.get("/crawl_group")
-def crawl_group_endpoint(id: str = Query(...), group: str = Query(...)):
-    # Kiểm tra driver tương ứng idbot đang có
+@app.get("/crawl")
+def crawl_group_endpoint(id: str = Query(...), group: str = Query(...), delete: bool = Query(False)):
     driver = drivers.get(id)
     if not driver:
-        raise HTTPException(status_code=400, detail="Tài khoản bot chưa login hoặc không tồn tại")
+        x = find_next_position(used_x)
+        driver = login(id, x)
+        drivers[id] = driver
+        return {"message": f"Đã login user {id}"}
 
-    # Khởi động crawl_group trong thread để không block request (nếu bạn muốn đồng bộ thì bỏ threading)
-    stop_event = threading.Event()
-    profile = profiles_collection.find_one({'id': int(id)})
-    def crawl_and_store():
-        try:
-            # Gọi hàm crawl mất thời gian tùy bạn định nghĩa
-            crawl.crawl_group(driver, group,id, profile['name'])
-        except Exception as e:
-            logging.error(f"Lỗi crawl group {group}: {e}")
+    if not delete:
+        stop_event = threading.Event()
+        profile = profiles_collection.find_one({'id': int(id)})
+        start = [False]
 
-    t = threading.Thread(target=crawl_and_store)
-    t.start()
+        def crawl_and_store():
+            try:
+                print('bat dau')
+                crawl.crawl_group(driver, group, id, profile['name'])
+                print("ket thuc")
+                start[0] = True
+            except Exception as e:
+                logging.error(f"Lỗi crawl group {group}: {e}")
 
-    # Đợi crawl hoàn thành hoặc trả lời trước nếu muốn
-    t.join()  # Nếu muốn chờ crawl xong mới trả về dữ liệu
-    # Hoặc bỏ nếu muốn trả về ngay
-    grid = group
-    group = group_collection.find_one({"id": grid}, {
-        "_id": 0,
-        "id": 1,
-        "name": 1,
-        "url": 1,
-        "len_gr": 1,
-        "last_crawl": 1
-    })
-    if not group:
-        raise HTTPException(status_code=404, detail="Đã yêu cầu tham gia hoặc chưa được xác nhận")
+        t = threading.Thread(target=crawl_and_store)
+        t.start()
+        t.join()
 
-    # Lấy dữ liệu tin nhắn
-    messages_cursor = data_collection.find({"group_id": grid}, {
-        "_id": 0,
-        "id": 1,
-        "type": 1,
-        "content": 1,
-        "time": 1,
-        "user_id": 1,
-        "user_name": 1,
-        "url":1
-    })
+        while True:
+            if start[0]:
+                print('Da cao xong', start)
+                grid = group
+                group_data = group_collection.find_one({"id": grid}, {
+                    "_id": 0,
+                    "id": 1,
+                    "name": 1,
+                    "url": 1,
+                    "len_gr": 1,
+                    "last_crawl": 1
+                })
+                if not group_data:
+                    raise HTTPException(status_code=404, detail="Đã yêu cầu tham gia hoặc chưa được xác nhận")
 
-    messages = []
-    for mes in messages_cursor:
-        messages.append({
-            "id_mes": mes.get("id", None),
-            "type": mes.get("type", None),
-            "content": mes.get("content", None),
-            "time": mes.get("time", None),
-            "id_user": mes.get("user_id", None),
-            "name_user": mes.get("user_name", None),
-            "url": mes.get("url", None),
-        })
+                messages_cursor = data_collection.find({"group_id": grid}, {
+                    "_id": 0,
+                    "id": 1,
+                    "type": 1,
+                    "content": 1,
+                    "time": 1,
+                    "user_id": 1,
+                    "user_name": 1,
+                    "url": 1
+                })
 
-    return JSONResponse(content={
-        "id_group": group.get("id", None),
-        "name_group": group.get("name", None),
-        "len_group": group.get("len_gr", None),
-        "url_group": group.get("url", None),
-        "last_crawl": group.get("last_crawl", None),
-        "data": messages,
-    })
+                messages = []
+                for mes in messages_cursor:
+                    messages.append({
+                        "id_mes": mes.get("id", None),
+                        "type": mes.get("type", None),
+                        "content": mes.get("content", None),
+                        "time": mes.get("time", None),
+                        "id_user": mes.get("user_id", None),
+                        "name_user": mes.get("user_name", None),
+                        "url": mes.get("url", None),
+                    })
+
+                return JSONResponse(content={
+                    "id_group": group_data.get("id", None),
+                    "name_group": group_data.get("name", None),
+                    "len_group": group_data.get("len_gr", None),
+                    "url_group": group_data.get("url", None),
+                    "last_crawl": group_data.get("last_crawl", None),
+                    "data": messages,
+                })
+            print('Dang cho start = ', start[0])
+            time.sleep(1)
+
+    else:
+        # delete == True, gọi out_gr trong thread, chờ đến khi trả về True rồi phản hồi
+        result = [False]
+
+        def call_out_gr():
+            try:
+                # Giả sử hàm out_gr trả True/False
+                result[0] = crawl.out_gr(driver, group, id)
+            except Exception as e:
+                logging.error(f"Lỗi khi thoát group {group}: {e}")
+
+        t = threading.Thread(target=call_out_gr)
+        t.start()
+        t.join()
+
+        if result[0]:
+            return {"message": f"User {id} đã thoát group {group}"}
+        else:
+            raise HTTPException(status_code=500, detail="Thoát group không thành công")

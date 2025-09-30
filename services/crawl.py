@@ -117,7 +117,7 @@ def update_data(driver,list_bb_mes,id_group,name_gr,max_time,first_user_id,first
     type1 = None
     type2 = None
     i = 0 
-    # print("thu thập được",len(list_bb_mes))
+    print("thu thập được",len(list_bb_mes))
     for bb_mes in reversed(list_bb_mes): # đoạn này xoay ngược lại cái list để thu thập từ dưới lên
         # đoạn này thì lấy thông tin nè
         bb_id = bb_mes.find_element(By.XPATH,".//div[@class='message-action']/div") # cái thẻ div có thuộc tính data-id 
@@ -133,11 +133,11 @@ def update_data(driver,list_bb_mes,id_group,name_gr,max_time,first_user_id,first
 
         #giờ so sánh nếu cái time của tin nhắn hiện tại mà bé hơn hoặc bangừ cái max_time 
         # thì chứng tỏ là đây là tin nhắn đã crawl rồi
-        # print(i,"so sanh time id",time_id ,"<>",max_time)
+        print(i,"so sanh time id",time_id ,"<>",max_time)
         if time_id <= max_time: 
             # print(i,"dừng lại giữa chừng vì",time_id ,"<=",max_time)
             if file_data:
-                # print('file_data 1 ',file_data)
+                print('file_data 1 ',file_data)
                 if not type1:
                     type1 = first_user_id
                     type2 = first_user_name
@@ -217,8 +217,8 @@ def update_data(driver,list_bb_mes,id_group,name_gr,max_time,first_user_id,first
             ###video
             elif 'video' in class_name:
                 user_name = data_id.split("_")[1]# lấy ra user name của video từ thuộc tính crossorigin của thẻ img
-                if not type:
-                    type = user_name
+                if not type2:
+                    type2 = user_name
                 show_video = bb_mes.find_element(By.XPATH,".//div[@class='video-message__background-overlay video-message__background-overlay--clickable rounded-t-5 rounded-b-5']")
                 driver.execute_script("arguments[0].click();", show_video)
                 time.sleep(3)
@@ -536,6 +536,7 @@ def run_bot(driver,stop_event,profile_id,profile_name):
     #     print("Bot đã dừng và driver đã được đóng.")
 
 def crawl_group(driver, group_code,profile_id,profile_name):
+    print("bat dau cao ",group_code)
     new_url = f"https://chat.zalo.me/?g={group_code}"
     driver.get(new_url)
     time.sleep(8)
@@ -545,7 +546,7 @@ def crawl_group(driver, group_code,profile_id,profile_name):
         time.sleep(2)
         print("Đã tham gia nhóm thành công!")
     except Exception as e:
-        print("Lỗi khi tham gia nhóm hoặc đã tham gia trước đó:", e)
+        print("Lỗi khi tham gia nhóm hoặc đã tham gia trước đó")
     id_group,name_gr,len_gr = get_id_group(driver)
     group = list(group_collection.find({}, {'_id': 0}))
     #đoạn này là lấy max_time ra để chạy
@@ -567,7 +568,7 @@ def crawl_group(driver, group_code,profile_id,profile_name):
     attempt =0
     while first_time > max_time and attempt < 1000:
         attempt += 1
-        # print(first_time , max_time)
+        print(first_time , max_time)
         scroll(driver)
         time.sleep(0.5)
         list_bb_mes = driver.find_elements(By.XPATH,"//div[@data-component='bubble-message']")
@@ -583,6 +584,7 @@ def crawl_group(driver, group_code,profile_id,profile_name):
             break 
         except:
             pass
+    print('luot len xong')
     new_max_time = int(list_bb_mes[-1].get_attribute("id").split("_")[3]) # đoạn này lấy thời gian của tin nhắn cuối cùng
     # print("new_max_time",new_max_time,'max_time',max_time)
     #######
@@ -600,6 +602,7 @@ def crawl_group(driver, group_code,profile_id,profile_name):
             item['url'] = f"/data/video/{item.get('group_id')}/{item.get('user_id')}/{item.get('content')}"
         elif 'file' in t:
             item['url'] = f"/data/file/{item.get('content')}"
+    print("cao xong, bat dau luu thong itn")
     update_group(new_max_time,id_group,name_gr,len_gr,first_user_id,first_user_name) # đoạn này là cập nhật nhóm
     update_information(new_info)
     # đoạn này là nhảy ra cloud để tiến hành cập nhật lại data để tránh có tin nhắn mới vào làm ảnh hưởng
@@ -607,7 +610,7 @@ def crawl_group(driver, group_code,profile_id,profile_name):
     driver.execute_script("arguments[0].click();", all)
     pinner = driver.find_element(By.XPATH,"//div-16")
     driver.execute_script("arguments[0].click();", pinner)
-
+    print("Done", group_code)
     if new_data:
         data_collection.insert_many(new_data)
     logging.info(f"Bot: da thu thap duoc {count_by_type(new_data)} va {len(new_info)} user moi trong group {name_gr}") 
@@ -636,7 +639,7 @@ def out_gr(driver, gr_url):
                 out_gr_2 = driver.find_element(By.XPATH,"//div[@data-translate-inner='STR_LEAVEGROUP_MENU']")
                 driver.execute_script("arguments[0].click();", out_gr_2)
                 time.sleep(0.5)
-            break
+            return True
         except: 
             aa = driver.find_element(By.XPATH,"//i[@class='fa fa-close f16 pre']")
             driver.execute_script("arguments[0].click();", aa)
